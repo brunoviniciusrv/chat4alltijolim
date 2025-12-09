@@ -1,5 +1,9 @@
 # Chat4All - Sistema de Mensageria Distribuído
 
+Autores: Bruno Vincius R. Vieira e Lucas Freire Tizzo.
+
+Descrição: Aplicação feita como trabalho para matéria de Sistemas Distribuídos, utlizando o Specify-kit.
+
 ![Status](https://img.shields.io/badge/status-100%25%20funcional-brightgreen)
 ![Tests](https://img.shields.io/badge/testes-20%2F20%20aprovados-brightgreen)
 ![Performance](https://img.shields.io/badge/latência-13ms-brightgreen)
