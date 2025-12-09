@@ -1,0 +1,229 @@
+# ============================================================================
+# Prometheus Alerting Rules - Chat4All
+# ============================================================================
+# Purpose: Monitor SLA ≥99.95% (RNF-002)
+# 
+# SLA 99.95% = 21.6 minutes downtime per month
+# 
+# Alertas configurados:
+# - Serviços down (API, Router, Connectors)
+# - Alta latência (P99 > 200ms)
+# - Alto error rate (> 1%)
+# - Throughput baixo
+# - Disco/memória/CPU críticos
+# ============================================================================
+
+groups:
+  # ==========================================================================
+  # GRUPO 1: SLA CRITICAL (Impacta disponibilidade)
+  # ==========================================================================
+  - name: sla_critical
+    interval: 15s
+    rules:
+      
+      # API Service Down
+      - alert: APIServiceDown
+        expr: up{job="api-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: api-service
+          sla_impact: high
+        annotations:
+          summary: "🔴 API Service is DOWN"
+          description: "API Service ({{ $labels.instance }}) has been down for more than 1 minute. SLA breach imminent!"
+          impact: "Users cannot send/receive messages"
+          action: "1. Check container: docker ps | grep api-service\n2. Check logs: docker logs chat4all-api-service\n3. Restart if needed: docker-compose restart api-service"
+      
+      # Router Worker Down
+      - alert: RouterWorkerDown
+        expr: up{job="router-worker"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: router-worker
+          sla_impact: high
+        annotations:
+          summary: "🔴 Router Worker is DOWN"
+          description: "Router Worker ({{ $labels.instance }}) has been down for more than 2 minutes."
+          impact: "Messages not being processed/delivered"
+          action: "Check Kafka consumer lag and restart worker"
+      
+      # Kafka Down
+      - alert: KafkaBrokerDown
+        expr: up{job="kafka"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          component: kafka
+          sla_impact: critical
+        annotations:
+          summary: "🔴 Kafka Broker is DOWN"
+          description: "Kafka broker is unreachable. This is a CRITICAL failure!"
+          impact: "Complete system failure - no messages can be queued"
+          action: "URGENT: Restart Kafka immediately"
+      
+      # Cassandra Down
+      - alert: CassandraDown
+        expr: up{job="cassandra"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: cassandra
+          sla_impact: high
+        annotations:
+          summary: "🔴 Cassandra is DOWN"
+          description: "Cassandra database is unreachable."
+          impact: "Cannot persist/retrieve messages"
+          action: "Check Cassandra status and restart if needed"
+  
+  # ==========================================================================
+  # GRUPO 2: PERFORMANCE (Impacta qualidade do serviço)
+  # ==========================================================================
+  - name: performance
+    interval: 30s
+    rules:
+      
+      # Alta Latência P99 (RNF-006)
+      - alert: HighLatencyP99
+        expr: histogram_quantile(0.99, rate(grpc_request_duration_seconds_bucket[5m])) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+          component: api-service
+          sla_impact: medium
+        annotations:
+          summary: "⚠️  High P99 Latency detected"
+          description: "P99 latency is {{ $value | humanizeDuration }} (threshold: 200ms)"
+          impact: "Users experiencing slow responses"
+          action: "1. Check CPU/Memory\n2. Scale API service\n3. Review slow queries"
+      
+      # Alto Error Rate
+      - alert: HighErrorRate
+        expr: rate(grpc_requests_failed_total[5m]) / rate(grpc_requests_total[5m]) > 0.01
+        for: 3m
+        labels:
+          severity: warning
+          component: api-service
+          sla_impact: medium
+        annotations:
+          summary: "⚠️  High Error Rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 1%)"
+          impact: "Some requests failing"
+          action: "Check application logs for error patterns"
+      
+      # Baixo Throughput
+      - alert: LowThroughput
+        expr: rate(messages_sent_total[5m]) < 100
+        for: 10m
+        labels:
+          severity: info
+          component: system
+          sla_impact: low
+        annotations:
+          summary: "ℹ️  Low message throughput"
+          description: "Only {{ $value }} messages/second (expected: >100)"
+          impact: "System underutilized or traffic drop"
+          action: "Investigate if traffic drop is expected"
+      
+      # Kafka Consumer Lag
+      - alert: KafkaConsumerLagHigh
+        expr: kafka_consumer_lag > 10000
+        for: 5m
+        labels:
+          severity: warning
+          component: router-worker
+          sla_impact: medium
+        annotations:
+          summary: "⚠️  Kafka consumer lag is high"
+          description: "Consumer lag is {{ $value }} messages"
+          impact: "Messages being processed with delay"
+          action: "Scale router-worker or optimize processing"
+  
+  # ==========================================================================
+  # GRUPO 3: RESOURCES (Infraestrutura)
+  # ==========================================================================
+  - name: resources
+    interval: 1m
+    rules:
+      
+      # CPU Alta
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_seconds_total[5m]) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+          sla_impact: low
+        annotations:
+          summary: "⚠️  High CPU usage"
+          description: "CPU usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+          impact: "Performance degradation possible"
+          action: "Consider scaling or optimizing code"
+      
+      # Memória Alta
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes / node_memory_MemTotal_bytes > 0.9
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+          sla_impact: low
+        annotations:
+          summary: "⚠️  High memory usage"
+          description: "Memory usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+          impact: "Potential OOM kills"
+          action: "Investigate memory leaks or scale up"
+      
+      # Disco Cheio
+      - alert: DiskSpaceLow
+        expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.1
+        for: 5m
+        labels:
+          severity: critical
+          component: infrastructure
+          sla_impact: high
+        annotations:
+          summary: "🔴 Disk space critically low"
+          description: "Only {{ $value | humanizePercentage }} disk space remaining"
+          impact: "System may crash if disk fills"
+          action: "URGENT: Clean up disk space or add storage"
+  
+  # ==========================================================================
+  # GRUPO 4: SLA TRACKING (Métricas de uptime)
+  # ==========================================================================
+  - name: sla_tracking
+    interval: 5m
+    rules:
+      
+      # SLA Mensal (rolling 30 days)
+      - record: sla:uptime:30d
+        expr: |
+          (
+            sum(up{job=~"api-service|router-worker"}) 
+            / 
+            count(up{job=~"api-service|router-worker"})
+          ) * 100
+      
+      # SLA Semanal (rolling 7 days)
+      - record: sla:uptime:7d
+        expr: |
+          avg_over_time(sla:uptime:30d[7d]) 
+      
+      # Alertar se SLA < 99.95%
+      - alert: SLABreach
+        expr: sla:uptime:30d < 99.95
+        for: 1h
+        labels:
+          severity: critical
+          sla_impact: critical
+        annotations:
+          summary: "🔴 SLA BREACH - Uptime below 99.95%"
+          description: "Current SLA: {{ $value }}% (target: 99.95%)"
+          impact: "Contractual SLA violation"
+          action: "ESCALATE: Review incident and implement fixes"
+      
+      # Downtime acumulado no mês
+      - record: sla:downtime_minutes:30d
+        expr: |
+          (100 - sla:uptime:30d) * 30 * 24 * 60 / 100

@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+// API Version 1.0 (RN-007: Versionamento de API)
+package chat4all.v1;
+
+option java_multiple_files = true;
+option java_package = "chat4all.grpc.generated.v1";
+option java_outer_classname = "AuthProto";
+
+// Serviço de Autenticação
+service AuthService {
+  // Registrar novo usuário
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  
+  // Fazer login e obter token JWT
+  rpc Login(LoginRequest) returns (LoginResponse);
+  
+  // Validar token JWT
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+}
+
+message RegisterRequest {
+  string username = 1;
+  string email = 2;
+  string password = 3;
+}
+
+message RegisterResponse {
+  string user_id = 1;
+  string username = 2;
+  string email = 3;
+  int64 created_at = 4;
+}
+
+message LoginRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  string access_token = 1;
+  string token_type = 2;
+  int32 expires_in = 3;
+  string user_id = 4;
+}
+
+message ValidateTokenRequest {
+  string token = 1;
+}
+
+message ValidateTokenResponse {
+  bool valid = 1;
+  string user_id = 2;
+  string username = 3;
+  int64 expires_at = 4;
+}

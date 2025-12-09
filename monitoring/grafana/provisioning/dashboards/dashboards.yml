@@ -1,0 +1,19 @@
+# ============================================================================
+# Grafana Dashboard Provisioning Configuration
+# ============================================================================
+# Purpose: Auto-load dashboards from /var/lib/grafana/dashboards
+# ============================================================================
+
+apiVersion: 1
+
+providers:
+  - name: 'Chat4All Dashboards'
+    orgId: 1
+    folder: 'Chat4All'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true

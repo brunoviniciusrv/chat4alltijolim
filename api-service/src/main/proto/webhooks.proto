@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+// API Version 1.0 (RN-007: Versionamento de API)
+package chat4all.v1;
+
+option java_multiple_files = true;
+option java_package = "chat4all.grpc.generated.v1";
+option java_outer_classname = "WebhooksProto";
+
+// Serviço de Webhooks - RF-009
+// Permite registro de URLs para notificação de eventos
+service WebhookService {
+  // Registrar webhook para receber notificações
+  rpc RegisterWebhook(RegisterWebhookRequest) returns (RegisterWebhookResponse);
+  
+  // Listar webhooks cadastrados
+  rpc ListWebhooks(ListWebhooksRequest) returns (ListWebhooksResponse);
+  
+  // Remover webhook
+  rpc DeleteWebhook(DeleteWebhookRequest) returns (DeleteWebhookResponse);
+  
+  // Testar webhook (envia evento de teste)
+  rpc TestWebhook(TestWebhookRequest) returns (TestWebhookResponse);
+}
+
+message RegisterWebhookRequest {
+  string url = 1;                    // URL do webhook (HTTP POST)
+  repeated string events = 2;        // Eventos: NEW_MESSAGE, MESSAGE_DELIVERED, MESSAGE_READ
+  string conversation_id = 3;        // Opcional: filtrar por conversa específica
+  string description = 4;            // Descrição do webhook
+}
+
+message RegisterWebhookResponse {
+  string webhook_id = 1;
+  string url = 2;
+  repeated string events = 3;
+  int64 created_at = 4;
+  string secret = 5;                 // HMAC secret para validar callbacks
+}
+
+message ListWebhooksRequest {
+  string user_id = 1;                // Listar webhooks do usuário
+}
+
+message ListWebhooksResponse {
+  repeated WebhookInfo webhooks = 1;
+}
+
+message WebhookInfo {
+  string webhook_id = 1;
+  string url = 2;
+  repeated string events = 3;
+  string status = 4;                 // ACTIVE, DISABLED, ERROR
+  int64 created_at = 5;
+  int64 last_triggered = 6;
+  int32 success_count = 7;
+  int32 failure_count = 8;
+}
+
+message DeleteWebhookRequest {
+  string webhook_id = 1;
+}
+
+message DeleteWebhookResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message TestWebhookRequest {
+  string webhook_id = 1;
+}
+
+message TestWebhookResponse {
+  bool success = 1;
+  int32 status_code = 2;             // HTTP status do callback
+  string response_body = 3;
+  int64 latency_ms = 4;
+}

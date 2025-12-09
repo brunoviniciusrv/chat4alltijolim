@@ -1,0 +1,50 @@
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+specs/
+README.md
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# Build artifacts
+# IMPORTANT: Commented out because we need JAR files for Docker build
+# target/
+# */target/
+
+# Logs
+*.log
+logs/
+
+# Environment files
+.env*
+*.env
+
+# Docker
+docker-compose.yml
+Dockerfile
+**/Dockerfile
+
+# Test files
+**/src/test/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Scripts
+scripts/
+
+# Temporary files
+*.tmp
+*.swp
+*.bak

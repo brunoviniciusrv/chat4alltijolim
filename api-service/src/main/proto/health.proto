@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+// API Version 1.0 (RN-007: Versionamento de API)
+package chat4all.v1;
+
+option java_multiple_files = true;
+option java_package = "chat4all.grpc.generated.v1";
+option java_outer_classname = "HealthProto";
+
+// Serviço de Health Check
+service HealthService {
+  // Verificar saúde do serviço
+  rpc Check(HealthCheckRequest) returns (HealthCheckResponse);
+  
+  // Obter métricas Prometheus
+  rpc GetMetrics(MetricsRequest) returns (MetricsResponse);
+}
+
+message HealthCheckRequest {
+  string service = 1;
+}
+
+message HealthCheckResponse {
+  enum ServingStatus {
+    UNKNOWN = 0;
+    SERVING = 1;
+    NOT_SERVING = 2;
+  }
+  ServingStatus status = 1;
+  string message = 2;
+  map<string, string> details = 3;
+}
+
+message MetricsRequest {
+  // Vazio por enquanto
+}
+
+message MetricsResponse {
+  string content_type = 1; // "text/plain; version=0.0.4"
+  string metrics = 2; // Formato Prometheus
+}

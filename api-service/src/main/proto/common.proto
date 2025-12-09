@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+// API Version 1.0 (RN-007: Versionamento de API)
+package chat4all.v1;
+
+option java_package = "chat4all.grpc.generated.v1";
+option java_multiple_files = true;
+
+/**
+ * Pagination - Common pagination message
+ */
+message Pagination {
+    int64 offset = 1;
+    int32 limit = 2;
+    int32 returned = 3;
+    bool has_more = 4;
+}

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat4All - Mensageria Distribuída</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen">
+        <div class="login-container">
+            <div class="logo">
+                <div class="logo-icon">💬</div>
+                <h1>Chat4All</h1>
+                <p>Sistema de mensageria distribuído</p>
+            </div>
+
+            <div class="tabs">
+                <div class="tab active" data-tab="login">Entrar</div>
+                <div class="tab" data-tab="register">Registrar</div>
+            </div>
+
+            <div id="errorContainer"></div>
+
+            <form id="authForm">
+                <input type="hidden" id="authType" value="login">
+                
+                <div class="form-group">
+                    <label for="username">Usuário</label>
+                    <input type="text" id="username" required placeholder="Digite seu usuário">
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Senha</label>
+                    <input type="password" id="password" required placeholder="Digite sua senha">
+                </div>
+
+                <button type="submit" class="btn-primary" id="authBtn">Entrar</button>
+            </form>
+
+            <p style="text-align: center; margin-top: 20px; color: #667781; font-size: 12px;">
+                Desenvolvido com gRPC, Kafka e Cassandra
+            </p>
+        </div>
+    </div>
+
+    <!-- Chat Interface -->
+    <div id="chatInterface" style="display: none;">
+        <div class="chat-container">
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <div class="user-info">
+                        <div class="user-avatar" id="currentUserAvatar"></div>
+                        <div class="user-name" id="currentUserName"></div>
+                    </div>
+                    <div class="header-actions">
+                        <button class="icon-btn" id="newChatBtn" title="Nova conversa">➕</button>
+                        <button class="icon-btn" id="newGroupBtn" title="Novo grupo">👥</button>
+                        <button class="icon-btn" id="refreshBtn" title="Atualizar">🔄</button>
+                        <button class="icon-btn" id="logoutBtn" title="Sair">🚪</button>
+                    </div>
+                </div>
+
+                <div class="search-bar">
+                    <input type="text" class="search-input" placeholder="Buscar conversas" id="searchInput">
+                </div>
+
+                <div class="conversations-list" id="conversationsList">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Carregando conversas...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Window -->
+            <div class="chat-window" id="chatWindow">
+                <div class="empty-state">
+                    <div class="empty-state-icon">💬</div>
+                    <h3>Chat4All Web</h3>
+                    <p>Selecione uma conversa para começar</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Chat Modal -->
+    <div class="modal" id="newChatModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Nova Conversa</h2>
+                <button class="close-btn" data-modal="newChatModal">×</button>
+            </div>
+            <div class="form-group">
+                <input type="text" class="search-input" placeholder="Buscar usuário (ex: user2)" id="userSearchInput">
+            </div>
+            <div class="user-list" id="userSearchResults">
+                <div class="loading">
+                    <p>Digite o nome do usuário para iniciar conversa...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Group Modal -->
+    <div class="modal" id="newGroupModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Novo Grupo</h2>
+                <button class="close-btn" data-modal="newGroupModal">×</button>
+            </div>
+            <div class="group-form">
+                <div class="form-group">
+                    <label>Nome do Grupo</label>
+                    <input type="text" class="form-input" placeholder="Digite o nome do grupo" id="groupNameInput">
+                </div>
+                <div class="form-group">
+                    <label>Adicionar Membros</label>
+                    <input type="text" class="search-input" placeholder="Buscar usuários" id="groupMemberSearchInput">
+                </div>
+                <div class="user-list" id="groupMemberSearchResults" style="max-height: 200px; overflow-y: auto; margin-bottom: 15px;">
+                    <div class="loading">
+                        <p>Carregando usuários...</p>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Membros Selecionados (<span id="selectedMemberCount">0</span>)</label>
+                    <div id="selectedMembersList" class="selected-members-list"></div>
+                </div>
+                <button class="btn-primary" id="createGroupBtn">Criar Grupo</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

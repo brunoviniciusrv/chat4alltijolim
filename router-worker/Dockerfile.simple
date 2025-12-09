@@ -1,0 +1,20 @@
+FROM eclipse-temurin:17-jre-alpine
+
+LABEL maintainer="Chat4All Team"
+LABEL description="Router Worker - Kafka consumer and message processor"
+
+RUN addgroup -S chat4all && adduser -S chat4all -G chat4all
+
+WORKDIR /app
+
+COPY target/router-worker-1.0.0-SNAPSHOT.jar app.jar
+
+RUN chown -R chat4all:chat4all /app
+
+USER chat4all
+
+ENTRYPOINT ["java", \
+  "-XX:+UseContainerSupport", \
+  "-XX:MaxRAMPercentage=75.0", \
+  "-Djava.security.egd=file:/dev/./urandom", \
+  "-jar", "app.jar"]

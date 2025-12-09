@@ -1,0 +1,153 @@
+# ============================================================================
+# AlertManager Configuration - Chat4All
+# ============================================================================
+# Purpose: Route and send alerts from Prometheus
+# Supports: Email, Slack, PagerDuty, Webhooks
+# ============================================================================
+
+global:
+  resolve_timeout: 5m
+  
+  # SMTP Configuration (configure with real credentials)
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_from: 'alerts@chat4all.com'
+  smtp_auth_username: 'alerts@chat4all.com'
+  smtp_auth_password: 'YOUR_PASSWORD_HERE'  # Use env var: $SMTP_PASSWORD
+  smtp_require_tls: true
+
+# Templates for alert messages
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# ============================================================================
+# ROUTING TREE
+# ============================================================================
+route:
+  # Default receiver
+  receiver: 'default-receiver'
+  
+  # Group alerts by these labels
+  group_by: ['alertname', 'component']
+  
+  # Wait time before sending notification
+  group_wait: 10s
+  
+  # Wait time before sending follow-up notification
+  group_interval: 5m
+  
+  # Wait time before re-sending notification
+  repeat_interval: 4h
+  
+  # Routes for specific alert types
+  routes:
+    
+    # CRITICAL: SLA impacting alerts -> PagerDuty + Slack
+    - match:
+        severity: critical
+      receiver: 'pagerduty-critical'
+      continue: true  # Send to multiple receivers
+      group_wait: 5s
+      repeat_interval: 1h
+    
+    # WARNING: Performance issues -> Slack only
+    - match:
+        severity: warning
+      receiver: 'slack-warnings'
+      group_wait: 30s
+      repeat_interval: 2h
+    
+    # INFO: Low priority -> Email only
+    - match:
+        severity: info
+      receiver: 'email-team'
+      group_wait: 5m
+      repeat_interval: 12h
+
+# ============================================================================
+# RECEIVERS (Notification Channels)
+# ============================================================================
+receivers:
+  
+  # Default receiver (catch-all)
+  - name: 'default-receiver'
+    email_configs:
+      - to: 'oncall@chat4all.com'
+        headers:
+          Subject: '[Chat4All] Alert: {{ .GroupLabels.alertname }}'
+        html: |
+          <h2>🚨 Alert: {{ .GroupLabels.alertname }}</h2>
+          <p><strong>Severity:</strong> {{ .CommonLabels.severity }}</p>
+          <p><strong>Component:</strong> {{ .CommonLabels.component }}</p>
+          <p><strong>Summary:</strong> {{ .CommonAnnotations.summary }}</p>
+          <p><strong>Description:</strong> {{ .CommonAnnotations.description }}</p>
+          <p><strong>Impact:</strong> {{ .CommonAnnotations.impact }}</p>
+          <hr>
+          <p><strong>Action Required:</strong></p>
+          <pre>{{ .CommonAnnotations.action }}</pre>
+  
+  # PagerDuty for critical alerts
+  - name: 'pagerduty-critical'
+    pagerduty_configs:
+      - service_key: 'YOUR_PAGERDUTY_SERVICE_KEY'  # Replace with real key
+        description: '{{ .CommonAnnotations.summary }}'
+        details:
+          severity: '{{ .CommonLabels.severity }}'
+          component: '{{ .CommonLabels.component }}'
+          impact: '{{ .CommonAnnotations.impact }}'
+          action: '{{ .CommonAnnotations.action }}'
+          firing: '{{ .Alerts.Firing | len }}'
+          resolved: '{{ .Alerts.Resolved | len }}'
+  
+  # Slack for warnings
+  - name: 'slack-warnings'
+    slack_configs:
+      - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'  # Replace
+        channel: '#chat4all-alerts'
+        username: 'Prometheus'
+        icon_emoji: ':warning:'
+        title: '{{ .CommonAnnotations.summary }}'
+        text: |
+          *Severity:* {{ .CommonLabels.severity }}
+          *Component:* {{ .CommonLabels.component }}
+          *Description:* {{ .CommonAnnotations.description }}
+          
+          *Impact:* {{ .CommonAnnotations.impact }}
+          
+          *Action Required:*
+          ```
+          {{ .CommonAnnotations.action }}
+          ```
+        
+        # Color coding
+        color: |-
+          {{ if eq .CommonLabels.severity "critical" }}danger{{ else if eq .CommonLabels.severity "warning" }}warning{{ else }}good{{ end }}
+  
+  # Email for team notifications
+  - name: 'email-team'
+    email_configs:
+      - to: 'team@chat4all.com'
+        headers:
+          Subject: '[INFO] Chat4All: {{ .GroupLabels.alertname }}'
+        send_resolved: true
+
+# ============================================================================
+# INHIBITION RULES
+# ============================================================================
+# Suppress certain alerts when others are firing
+inhibit_rules:
+  
+  # If service is down, don't alert on high latency/errors
+  - source_match:
+      severity: 'critical'
+      alertname: 'APIServiceDown'
+    target_match:
+      severity: 'warning'
+      component: 'api-service'
+    equal: ['component']
+  
+  # If Kafka is down, suppress router worker alerts
+  - source_match:
+      alertname: 'KafkaBrokerDown'
+    target_match:
+      component: 'router-worker'
+    equal: ['instance']

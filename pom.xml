@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+    Chat4All - Educational Distributed Systems Project
+    Parent POM for multi-module Maven project
+    
+    Architecture: Event-driven microservices (API Service + Router Worker)
+    Purpose: Demonstrate distributed systems concepts for 7th semester students
+    Principles: Minimal dependencies, test-first, horizontal scalability
+    -->
+
+    <groupId>com.chat4all</groupId>
+    <artifactId>chat4all-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>Chat4All Parent</name>
+    <description>Distributed messaging platform - educational implementation</description>
+
+    <modules>
+        <module>shared</module>
+        <module>api-service</module>
+        <module>router-worker</module>
+        <module>connector-whatsapp</module>
+        <module>connector-instagram</module>
+        <module>websocket-gateway</module>
+    </modules>
+
+    <properties>
+        <!-- Java Version -->
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- Dependency Versions -->
+        <!-- Only 3 external libraries per constitution: Minimal Dependencies principle -->
+        <kafka.version>3.6.0</kafka.version>
+        <cassandra.driver.version>4.17.0</cassandra.driver.version>
+        <java.jwt.version>4.4.0</java.jwt.version>
+        
+        <!-- Minimal JSON library for educational transparency -->
+        <org.json.version>20231013</org.json.version>
+        
+        <!-- Testing -->
+        <junit.version>5.10.1</junit.version>
+        <assertj.version>3.24.2</assertj.version>
+        
+        <!-- Logging -->
+        <slf4j.version>2.0.9</slf4j.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Apache Kafka Client -->
+            <!-- Justification: Enables distributed message broker pattern -->
+            <!-- Educational value: Students learn event-driven architecture, partitioning -->
+            <dependency>
+                <groupId>org.apache.kafka</groupId>
+                <artifactId>kafka-clients</artifactId>
+                <version>${kafka.version}</version>
+            </dependency>
+
+            <!-- Cassandra Driver -->
+            <!-- Justification: Provides CQL execution for distributed database access -->
+            <!-- Educational value: Students write raw queries, understand query-driven modeling -->
+            <dependency>
+                <groupId>com.datastax.oss</groupId>
+                <artifactId>java-driver-core</artifactId>
+                <version>${cassandra.driver.version}</version>
+            </dependency>
+
+            <!-- JWT Library -->
+            <!-- Justification: Minimal JWT token generation/validation per RFC 7519 -->
+            <!-- Educational value: Well-documented, single-purpose, students understand tokens -->
+            <dependency>
+                <groupId>com.auth0</groupId>
+                <artifactId>java-jwt</artifactId>
+                <version>${java.jwt.version}</version>
+            </dependency>
+
+            <!-- JSON Parsing (minimal library) -->
+            <!-- Note: Could use manual parsing for even more educational value -->
+            <dependency>
+                <groupId>org.json</groupId>
+                <artifactId>json</artifactId>
+                <version>${org.json.version}</version>
+            </dependency>
+
+            <!-- SLF4J API for logging -->
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
+            </dependency>
+
+            <!-- SLF4J Simple Implementation -->
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-simple</artifactId>
+                <version>${slf4j.version}</version>
+            </dependency>
+
+            <!-- Testing Dependencies -->
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${junit.version}</version>
+                <scope>test</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>org.assertj</groupId>
+                <artifactId>assertj-core</artifactId>
+                <version>${assertj.version}</version>
+                <scope>test</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <!-- Maven Compiler Plugin -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.11.0</version>
+                    <configuration>
+                        <source>17</source>
+                        <target>17</target>
+                    </configuration>
+                </plugin>
+
+                <!-- Maven Surefire Plugin (test execution) -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>3.2.2</version>
+                </plugin>
+
+                <!-- Maven JAR Plugin -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-jar-plugin</artifactId>
+                    <version>3.3.0</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>

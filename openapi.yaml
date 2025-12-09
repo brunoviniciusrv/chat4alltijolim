@@ -1,0 +1,973 @@
+openapi: 3.0.3
+info:
+  title: Chat4All API
+  description: |
+    **Chat4All** - Distributed Messaging Platform API
+    
+    Educational distributed systems project demonstrating:
+    - Event-Driven Architecture (Kafka)
+    - Horizontal Scalability (stateless services)
+    - Distributed Databases (Cassandra)
+    - Real-time notifications (WebSocket + Redis Pub/Sub)
+    - Object Storage (MinIO S3-compatible)
+    - Multi-platform connectors (WhatsApp, Instagram)
+    
+    ## Architecture
+    
+    ```
+    Client → API Service → Kafka → Router Worker → Cassandra
+                ↓                         ↓
+              MinIO                  Redis Pub/Sub
+                                          ↓
+                                   WebSocket Gateway
+    ```
+    
+    ## Authentication
+    
+    All endpoints (except `/auth/*`) require JWT Bearer token authentication:
+    
+    ```
+    Authorization: Bearer <jwt_token>
+    ```
+    
+    Get a token via `POST /auth/token` with valid credentials.
+    
+    ## Rate Limits
+    
+    No rate limits in educational version. Production deployment would implement:
+    - 100 requests/minute per user
+    - 1000 requests/minute per IP
+    
+    ## Error Handling
+    
+    All errors follow RFC 7807 Problem Details format:
+    
+    ```json
+    {
+      "type": "https://chat4all.example.com/errors/validation",
+      "title": "Validation Error",
+      "status": 400,
+      "detail": "Field 'content' is required"
+    }
+    ```
+    
+  version: 1.0.0
+  contact:
+    name: Chat4All Development Team
+    url: https://github.com/your-username/chat4alltijolim
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8082
+    description: Local development server (Docker Compose)
+  - url: http://localhost:8080
+    description: API Service direct (without port mapping)
+
+tags:
+  - name: Authentication
+    description: User authentication and token management
+  - name: Messages
+    description: Send and retrieve messages
+  - name: Conversations
+    description: Conversation history and metadata
+  - name: Files
+    description: File upload/download via MinIO object storage
+  - name: Health
+    description: Service health checks
+
+paths:
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user
+      description: |
+        Creates a new user account with username and password.
+        
+        **Note**: In the educational version, passwords are stored as plain text.
+        Production systems MUST use bcrypt/argon2 hashing.
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            examples:
+              basic:
+                summary: Basic registration
+                value:
+                  username: alice
+                  password: secure_password_123
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+              example:
+                user_id: user_alice_1701234567890
+                username: alice
+                created_at: 1701234567890
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Username already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                type: "https://chat4all.example.com/errors/conflict"
+                title: "Username Already Exists"
+                status: 409
+                detail: "Username 'alice' is already registered"
+
+  /auth/token:
+    post:
+      tags:
+        - Authentication
+      summary: Obtain JWT access token
+      description: |
+        Authenticates user credentials and returns a JWT access token.
+        
+        **Token Details:**
+        - Algorithm: HS256 (HMAC-SHA256)
+        - Expiration: 1 hour
+        - Claims: `sub` (user_id), `iat`, `exp`
+        
+        **Usage:**
+        ```
+        Authorization: Bearer <token>
+        ```
+      operationId: getToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+            examples:
+              alice:
+                summary: Alice's credentials
+                value:
+                  username: alice
+                  password: secure_password_123
+      responses:
+        '200':
+          description: Token generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+              example:
+                access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyX2FsaWNlXzE3MDEyMzQ1Njc4OTAiLCJpYXQiOjE3MDEyMzQ1NjcsImV4cCI6MTcwMTIzODE2N30.signature
+                token_type: Bearer
+                expires_in: 3600
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/messages:
+    post:
+      tags:
+        - Messages
+      summary: Send a message
+      description: |
+        Sends a message to a conversation. The message is published to Kafka and asynchronously
+        processed by the Router Worker for persistence and routing to external platforms.
+        
+        **Message Flow:**
+        1. API validates request and publishes to Kafka topic `messages`
+        2. Router Worker consumes message, writes to Cassandra
+        3. If `recipient_id` has platform prefix, routes to platform connector
+        4. Connector publishes status updates (DELIVERED, READ)
+        5. WebSocket Gateway pushes real-time notification to connected clients
+        
+        **Platform Routing:**
+        - `whatsapp:+5511999998888` → WhatsApp connector
+        - `instagram:@username` → Instagram connector
+        - No prefix → internal message only
+        
+        **Status Lifecycle:**
+        - Initial: `SENT`
+        - After routing: `DELIVERED`
+        - After user reads: `READ`
+      operationId: sendMessage
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+            examples:
+              textMessage:
+                summary: Simple text message
+                value:
+                  conversation_id: conv_demo_123
+                  sender_id: user_alice
+                  content: Hello from distributed systems!
+              whatsappMessage:
+                summary: Message to WhatsApp
+                value:
+                  conversation_id: conv_demo_123
+                  sender_id: user_alice
+                  recipient_id: whatsapp:+5511999998888
+                  content: Check out this article!
+              messageWithFile:
+                summary: Message with file attachment
+                value:
+                  conversation_id: conv_demo_123
+                  sender_id: user_alice
+                  recipient_id: instagram:@john_doe
+                  content: Here's the document you requested
+                  file_id: file_abc123xyz
+      responses:
+        '202':
+          description: Message accepted for processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageResponse'
+              example:
+                message_id: msg_d4e5f6a7b8c9
+                conversation_id: conv_demo_123
+                status: SENT
+                timestamp: 1701234567890
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: Message content too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                type: "https://chat4all.example.com/errors/payload-too-large"
+                title: "Message Too Large"
+                status: 413
+                detail: "Message content exceeds 10KB limit"
+
+  /v1/conversations/{conversation_id}/messages:
+    get:
+      tags:
+        - Conversations
+      summary: Retrieve conversation messages
+      description: |
+        Retrieves paginated messages for a specific conversation, ordered by timestamp (newest first).
+        
+        **Performance:**
+        - Cassandra partition key: `conversation_id` (ensures single-partition query)
+        - Average latency: < 10ms for 50 messages
+        - Clustering key: `timestamp DESC` (natural descending order)
+        
+        **Pagination:**
+        - `limit`: Number of messages per page (max 100, default 50)
+        - `offset`: Skip N messages (0-indexed)
+        - Use `offset` + `limit` for subsequent pages
+        
+        **Example Pagination:**
+        ```
+        Page 1: ?limit=50&offset=0   (messages 1-50)
+        Page 2: ?limit=50&offset=50  (messages 51-100)
+        Page 3: ?limit=50&offset=100 (messages 101-150)
+        ```
+      operationId: getMessages
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: conversation_id
+          in: path
+          required: true
+          description: Unique conversation identifier
+          schema:
+            type: string
+          example: conv_demo_123
+        - name: limit
+          in: query
+          description: Maximum number of messages to return (max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          example: 50
+        - name: offset
+          in: query
+          description: Number of messages to skip (for pagination)
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          example: 0
+      responses:
+        '200':
+          description: Messages retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationMessagesResponse'
+              example:
+                conversation_id: conv_demo_123
+                messages:
+                  - message_id: msg_abc123
+                    sender_id: user_alice
+                    content: Hello from distributed systems!
+                    timestamp: 1701234567890
+                    status: DELIVERED
+                    delivered_at: 1701234568000
+                  - message_id: msg_def456
+                    sender_id: user_bob
+                    recipient_id: whatsapp:+5511999998888
+                    content: Check out this file
+                    file_id: file_xyz789
+                    timestamp: 1701234560000
+                    status: READ
+                    delivered_at: 1701234561000
+                    read_at: 1701234570000
+                pagination:
+                  limit: 50
+                  offset: 0
+                  returned: 2
+                  has_more: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Conversation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                type: "https://chat4all.example.com/errors/not-found"
+                title: "Conversation Not Found"
+                status: 404
+                detail: "Conversation 'conv_demo_123' does not exist"
+
+  /v1/messages/{message_id}/read:
+    post:
+      tags:
+        - Messages
+      summary: Mark message as read
+      description: |
+        Updates message status to `READ` and records read timestamp.
+        
+        **Status Transition:**
+        - Only valid if current status is `DELIVERED`
+        - State machine validation enforced
+        - Invalid transitions return 409 Conflict
+        
+        **Implementation Note:**
+        This endpoint uses a two-step Cassandra query pattern:
+        1. SELECT to get full primary key (conversation_id + timestamp)
+        2. UPDATE using complete primary key
+        
+        This is required because Cassandra doesn't support UPDATE by non-primary-key fields.
+      operationId: markMessageAsRead
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: message_id
+          in: path
+          required: true
+          description: Message identifier
+          schema:
+            type: string
+          example: msg_abc123
+      responses:
+        '200':
+          description: Message marked as read successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageStatusResponse'
+              example:
+                message_id: msg_abc123
+                status: READ
+                read_at: 1701234580000
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Message not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                type: "https://chat4all.example.com/errors/not-found"
+                title: "Message Not Found"
+                status: 404
+                detail: "Message 'msg_abc123' does not exist"
+        '409':
+          description: Invalid status transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                type: "https://chat4all.example.com/errors/invalid-transition"
+                title: "Invalid Status Transition"
+                status: 409
+                detail: "Cannot transition from SENT to READ (must be DELIVERED first)"
+
+  /v1/files:
+    post:
+      tags:
+        - Files
+      summary: Upload a file
+      description: |
+        Uploads a file to MinIO object storage and stores metadata in Cassandra.
+        
+        **Features:**
+        - Streaming upload (memory-efficient, handles 2GB+ files)
+        - SHA-256 checksum for integrity validation
+        - S3-compatible storage (MinIO)
+        - Metadata persisted in Cassandra
+        
+        **Storage Path:**
+        ```
+        bucket: chat4all-files
+        path: {conversation_id}/{file_id}.{extension}
+        ```
+        
+        **File Limits:**
+        - Max size: 2GB (configurable)
+        - Supported formats: all (no restrictions in educational version)
+        - Concurrent uploads: unlimited
+        
+        **Security:**
+        - Files are private by default
+        - Access via presigned URLs only (GET /v1/files/{id}/download)
+        - URLs expire after 1 hour
+      operationId: uploadFile
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - conversation_id
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File binary content
+                conversation_id:
+                  type: string
+                  description: Associated conversation ID
+                  example: conv_demo_123
+            encoding:
+              file:
+                contentType: application/octet-stream
+      responses:
+        '201':
+          description: File uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileUploadResponse'
+              example:
+                file_id: file_abc123xyz
+                conversation_id: conv_demo_123
+                filename: document.pdf
+                size: 1048576
+                content_type: application/pdf
+                checksum: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+                uploaded_at: 1701234567890
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: File too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                type: "https://chat4all.example.com/errors/payload-too-large"
+                title: "File Too Large"
+                status: 413
+                detail: "File size exceeds 2GB limit"
+
+  /v1/files/{file_id}/download:
+    get:
+      tags:
+        - Files
+      summary: Get presigned download URL
+      description: |
+        Generates a time-limited presigned URL for secure file download.
+        
+        **Presigned URL Benefits:**
+        - Direct client-to-storage download (no API bottleneck)
+        - Time-limited access (default: 1 hour)
+        - No authentication required on download URL
+        - Reduced API server load
+        
+        **Security Model:**
+        1. Client authenticates with API (JWT)
+        2. API validates file access permissions
+        3. API generates presigned URL with MinIO credentials
+        4. Client downloads directly from MinIO using URL
+        5. URL expires after 1 hour
+        
+        **Performance:**
+        - Presigned URL generation: < 5ms
+        - Download bandwidth: Limited by MinIO/network, not API
+        - Suitable for large files (GB+)
+        
+        See [ADR-004](docs/adr/004-presigned-urls.md) for rationale.
+      operationId: getDownloadUrl
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          description: File identifier
+          schema:
+            type: string
+          example: file_abc123xyz
+      responses:
+        '200':
+          description: Presigned URL generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileDownloadResponse'
+              example:
+                download_url: http://minio:9000/chat4all-files/conv_demo_123/file_abc123xyz.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=...&X-Amz-Date=...&X-Amz-Expires=3600&X-Amz-Signature=...
+                expires_in: 3600
+                filename: document.pdf
+                size: 1048576
+                content_type: application/pdf
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: File not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                type: "https://chat4all.example.com/errors/not-found"
+                title: "File Not Found"
+                status: 404
+                detail: "File 'file_abc123xyz' does not exist"
+
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Service health check
+      description: |
+        Returns the health status of the API service.
+        
+        **Usage:**
+        - Load balancers: Route traffic only to healthy instances
+        - Monitoring: Alert on unhealthy status
+        - Deployment: Wait for healthy status before proceeding
+        
+        **Health Checks Performed:**
+        - HTTP server is responding
+        - Kafka connection is alive
+        - Cassandra connection is alive (if implemented)
+        
+        **Response Time:**
+        - Target: < 100ms
+        - No external dependencies checked (lightweight)
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: UP
+                timestamp: 1701234567890
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: DOWN
+                timestamp: 1701234567890
+                error: "Kafka connection failed"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT access token obtained from `POST /auth/token`.
+        
+        **Usage:**
+        ```
+        Authorization: Bearer <token>
+        ```
+        
+        **Token Structure:**
+        ```json
+        {
+          "alg": "HS256",
+          "typ": "JWT"
+        }
+        {
+          "sub": "user_alice_1701234567890",
+          "iat": 1701234567,
+          "exp": 1701238167
+        }
+        ```
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+          pattern: '^[a-zA-Z0-9_-]+$'
+          description: Unique username (alphanumeric, underscore, hyphen)
+          example: alice
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: User password (plain text in educational version)
+          example: secure_password_123
+
+    RegisterResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+          description: Generated user ID (format: user_{username}_{timestamp})
+          example: user_alice_1701234567890
+        username:
+          type: string
+          example: alice
+        created_at:
+          type: integer
+          format: int64
+          description: Registration timestamp (milliseconds since epoch)
+          example: 1701234567890
+
+    TokenRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          description: Registered username
+          example: alice
+        password:
+          type: string
+          description: User password
+          example: secure_password_123
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: JWT access token
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyX2FsaWNlXzE3MDEyMzQ1Njc4OTAiLCJpYXQiOjE3MDEyMzQ1NjcsImV4cCI6MTcwMTIzODE2N30.signature
+        token_type:
+          type: string
+          enum: [Bearer]
+          description: Token type (always "Bearer")
+          example: Bearer
+        expires_in:
+          type: integer
+          description: Token expiration time in seconds
+          example: 3600
+
+    SendMessageRequest:
+      type: object
+      required:
+        - conversation_id
+        - sender_id
+        - content
+      properties:
+        conversation_id:
+          type: string
+          description: Conversation identifier (partition key for Cassandra)
+          example: conv_demo_123
+        sender_id:
+          type: string
+          description: User ID of the sender
+          example: user_alice
+        recipient_id:
+          type: string
+          description: |
+            Recipient identifier with optional platform prefix.
+            - `whatsapp:+5511999998888` - WhatsApp number
+            - `instagram:@username` - Instagram handle
+            - No prefix - Internal message only
+          example: whatsapp:+5511999998888
+        content:
+          type: string
+          maxLength: 10240
+          description: Message content (max 10KB)
+          example: Hello from distributed systems!
+        file_id:
+          type: string
+          description: Optional file attachment ID (obtained from POST /v1/files)
+          example: file_abc123xyz
+
+    SendMessageResponse:
+      type: object
+      properties:
+        message_id:
+          type: string
+          description: Generated message ID (UUID-based)
+          example: msg_d4e5f6a7b8c9
+        conversation_id:
+          type: string
+          example: conv_demo_123
+        status:
+          type: string
+          enum: [SENT, DELIVERED, READ]
+          description: Initial message status (always SENT)
+          example: SENT
+        timestamp:
+          type: integer
+          format: int64
+          description: Message timestamp (milliseconds since epoch)
+          example: 1701234567890
+
+    Message:
+      type: object
+      properties:
+        message_id:
+          type: string
+          example: msg_abc123
+        conversation_id:
+          type: string
+          example: conv_demo_123
+        sender_id:
+          type: string
+          example: user_alice
+        recipient_id:
+          type: string
+          description: Optional recipient ID with platform prefix
+          example: whatsapp:+5511999998888
+        content:
+          type: string
+          example: Hello from distributed systems!
+        file_id:
+          type: string
+          description: Optional file attachment ID
+          example: file_xyz789
+        timestamp:
+          type: integer
+          format: int64
+          description: Message timestamp (clustering key)
+          example: 1701234567890
+        status:
+          type: string
+          enum: [SENT, DELIVERED, READ]
+          example: DELIVERED
+        delivered_at:
+          type: integer
+          format: int64
+          description: Delivery timestamp (null if not delivered)
+          example: 1701234568000
+        read_at:
+          type: integer
+          format: int64
+          description: Read timestamp (null if not read)
+          example: 1701234570000
+
+    ConversationMessagesResponse:
+      type: object
+      properties:
+        conversation_id:
+          type: string
+          example: conv_demo_123
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+        pagination:
+          type: object
+          properties:
+            limit:
+              type: integer
+              description: Requested limit
+              example: 50
+            offset:
+              type: integer
+              description: Requested offset
+              example: 0
+            returned:
+              type: integer
+              description: Number of messages returned in this page
+              example: 2
+            has_more:
+              type: boolean
+              description: Whether more messages are available
+              example: false
+
+    MessageStatusResponse:
+      type: object
+      properties:
+        message_id:
+          type: string
+          example: msg_abc123
+        status:
+          type: string
+          enum: [SENT, DELIVERED, READ]
+          example: READ
+        read_at:
+          type: integer
+          format: int64
+          description: Read timestamp
+          example: 1701234580000
+
+    FileUploadResponse:
+      type: object
+      properties:
+        file_id:
+          type: string
+          description: Generated file ID
+          example: file_abc123xyz
+        conversation_id:
+          type: string
+          example: conv_demo_123
+        filename:
+          type: string
+          description: Original filename
+          example: document.pdf
+        size:
+          type: integer
+          format: int64
+          description: File size in bytes
+          example: 1048576
+        content_type:
+          type: string
+          description: MIME type
+          example: application/pdf
+        checksum:
+          type: string
+          description: SHA-256 checksum (hex-encoded)
+          example: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+        uploaded_at:
+          type: integer
+          format: int64
+          description: Upload timestamp
+          example: 1701234567890
+
+    FileDownloadResponse:
+      type: object
+      properties:
+        download_url:
+          type: string
+          format: uri
+          description: Presigned URL for direct download from MinIO
+          example: http://minio:9000/chat4all-files/conv_demo_123/file_abc123xyz.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=...
+        expires_in:
+          type: integer
+          description: URL expiration time in seconds
+          example: 3600
+        filename:
+          type: string
+          example: document.pdf
+        size:
+          type: integer
+          format: int64
+          example: 1048576
+        content_type:
+          type: string
+          example: application/pdf
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [UP, DOWN]
+          description: Overall service health status
+          example: UP
+        timestamp:
+          type: integer
+          format: int64
+          description: Health check timestamp
+          example: 1701234567890
+        error:
+          type: string
+          description: Error message (only present if status is DOWN)
+          example: "Kafka connection failed"
+
+    Error:
+      type: object
+      properties:
+        type:
+          type: string
+          format: uri
+          description: Problem type URI (RFC 7807)
+          example: "https://chat4all.example.com/errors/validation"
+        title:
+          type: string
+          description: Human-readable error title
+          example: "Validation Error"
+        status:
+          type: integer
+          description: HTTP status code
+          example: 400
+        detail:
+          type: string
+          description: Detailed error message
+          example: "Field 'content' is required"
+        instance:
+          type: string
+          format: uri
+          description: URI reference to the specific occurrence
+          example: "/v1/messages"
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters or body
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            type: "https://chat4all.example.com/errors/validation"
+            title: "Validation Error"
+            status: 400
+            detail: "Field 'content' is required"
+
+    Unauthorized:
+      description: Missing or invalid authentication token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            type: "https://chat4all.example.com/errors/unauthorized"
+            title: "Unauthorized"
+            status: 401
+            detail: "Invalid or expired JWT token"

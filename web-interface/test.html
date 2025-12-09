@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test API</title>
+</head>
+<body>
+    <h1>Test REST API</h1>
+    <button onclick="testAPI()">Test API Connection</button>
+    <pre id="result"></pre>
+
+    <script>
+        async function testAPI() {
+            const result = document.getElementById('result');
+            result.textContent = 'Testing...';
+            
+            try {
+                // Test 1: Health check
+                result.textContent += '\n\n1. Testing /health...';
+                const healthResponse = await fetch('http://localhost:8081/health');
+                const health = await healthResponse.json();
+                result.textContent += '\n✅ Health: ' + JSON.stringify(health);
+                
+                // Test 2: Create user
+                result.textContent += '\n\n2. Testing /users (create user)...';
+                const randomUser = 'user' + Date.now();
+                const createResponse = await fetch('http://localhost:8081/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        username: randomUser, 
+                        password: 'senha123' 
+                    })
+                });
+                
+                if (!createResponse.ok) {
+                    throw new Error('Failed to create user: ' + createResponse.status);
+                }
+                
+                const created = await createResponse.json();
+                result.textContent += '\n✅ User created: ' + JSON.stringify(created);
+                
+                // Test 3: Login
+                result.textContent += '\n\n3. Testing /auth (login)...';
+                const authResponse = await fetch('http://localhost:8081/auth', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        username: randomUser, 
+                        password: 'senha123' 
+                    })
+                });
+                
+                if (!authResponse.ok) {
+                    throw new Error('Failed to login: ' + authResponse.status);
+                }
+                
+                const auth = await authResponse.json();
+                result.textContent += '\n✅ Login successful!';
+                result.textContent += '\n   Token: ' + auth.token.substring(0, 50) + '...';
+                result.textContent += '\n   UserId: ' + auth.userId;
+                
+                result.textContent += '\n\n✅ ALL TESTS PASSED!';
+                
+            } catch (error) {
+                result.textContent += '\n\n❌ ERROR: ' + error.message;
+                console.error('Full error:', error);
+            }
+        }
+    </script>
+</body>
+</html>
