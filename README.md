@@ -561,6 +561,4 @@ Para dúvidas ou sugestões, consulte a documentação em `/docs` ou abra uma is
 - 0 falhas registradas
 - Latência média: 13ms
 - Uptime: 100%
-- Última validação: 07/12/2024
-
-**Pronto para uso em produção!**
+- Última validação: 05/12/2024
